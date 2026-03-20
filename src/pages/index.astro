@@ -4,6 +4,7 @@ import Footer from '../components/Footer.astro';
 import Header from '../components/Header.astro';
 import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 import Analytics from '@vercel/analytics/astro';
+import SpeedInsights from "@vercel/speed-insights/astro";
 ---
 
 <!doctype html>
@@ -13,6 +14,7 @@ import Analytics from '@vercel/analytics/astro';
 	</head>
 	<body>
 		<Analytics/>
+		<SpeedInsights/>
 		<Header />
 		<main>
 			<h1>hello user </h1>
