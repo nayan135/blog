@@ -8,4 +8,6 @@ heroImage: 'https://cdn.hackclub.com/019ceafc-a745-7b04-a1e7-74c1fdf35e7e/202410
 
 # INTRODUCTION
     
- Nayan is a simple guy living in <a href="">Butwal, Nepal</a>
+ Nayan is a simple guy living in <a href="">Butwal, Nepal</a> He might be interested in Tech or not not depends on different dituation. But mostly he likes tech. 
+
+ He is the creator of this <strong>site</strong>
