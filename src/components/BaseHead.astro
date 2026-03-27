@@ -1,7 +1,7 @@
 ---
 import '../styles/global.css';
 import type { ImageMetadata } from 'astro';
-import FallbackImage from '../assets/octo.png';
+import FaviconImage from '../assets/favicon.png';
 import { SITE_TITLE } from '../consts';
 
 interface Props {
@@ -12,14 +12,14 @@ interface Props {
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 
-const { title, description, image = FallbackImage } = Astro.props;
+const { title, description, image = FaviconImage } = Astro.props;
 ---
 
 <!-- Global Metadata -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="icon" type="image/png" href="/assets/octo.png" />
-<link rel="icon" href="/assets/octo.png" />
+<link rel="icon" type="image/png" href={FaviconImage.src} />
+<link rel="icon" href={FaviconImage.src} />
 <link rel="sitemap" href="/sitemap-index.xml" />
 <link
 	rel="alternate"
