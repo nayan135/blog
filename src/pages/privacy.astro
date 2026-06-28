@@ -1,25 +1,41 @@
 ---
-import Layout from '../layouts/BlogPost.astro';
+import BaseHead from '../components/BaseHead.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import Analytics from '@vercel/analytics/astro';
+import SpeedInsights from "@vercel/speed-insights/astro";
 ---
 
-<Layout title="Privacy Policy">
-  <main>
-    <h1>Privacy Policy</h1>
-    <p><strong>Last updated: June 28, 2025</strong></p>
+<!doctype html>
+<html lang="en">
+  <head>
+    <BaseHead title="Privacy Policy | Nayan Acharya" description="Privacy Policy for Nayan Acharya's personal automation tool." />
+  </head>
+  <body>
+    <Header />
+    <main>
+      <article>
+        <h1>Privacy Policy</h1>
+        <p><strong>Last updated: June 28, 2025</strong></p>
 
-    <h2>Overview</h2>
-    <p>This application is a personal automation tool built and operated by Nayan Acharya for personal use only.</p>
+        <h2>Overview</h2>
+        <p>This application is a personal automation tool built and operated by Nayan Acharya for personal use only.</p>
 
-    <h2>Data Collection</h2>
-    <p>This App does not collect, store, or share any personal data from third parties. It only accesses TikTok account data strictly necessary to post content on behalf of the authorized account owner.</p>
+        <h2>Data Collection</h2>
+        <p>This App does not collect, store, or share any personal data from third parties. It only accesses TikTok account data strictly necessary to post content on behalf of the authorized account owner.</p>
 
-    <h2>Data Usage</h2>
-    <p>Any data accessed via TikTok APIs is used solely to publish video content to the authenticated TikTok account. No data is sold, shared, or used for any other purpose.</p>
+        <h2>Data Usage</h2>
+        <p>Any data accessed via TikTok APIs is used solely to publish video content to the authenticated TikTok account. No data is sold, shared, or used for any other purpose.</p>
 
-    <h2>Third Party Services</h2>
-    <p>This App uses TikTok's Content Posting API in compliance with TikTok's Developer Terms of Service.</p>
+        <h2>Third Party Services</h2>
+        <p>This App uses TikTok's Content Posting API in compliance with TikTok's Developer Terms of Service.</p>
 
-    <h2>Contact</h2>
-    <p>For any questions contact: <a href="mailto:acharyanayan604@gmail.com">acharyanayan604@gmail.com</a></p>
-  </main>
-</Layout>
+        <h2>Contact</h2>
+        <p>For any questions contact: <a href="mailto:acharyanayan604@gmail.com">acharyanayan604@gmail.com</a></p>
+      </article>
+    </main>
+    <Footer />
+    <Analytics />
+    <SpeedInsights />
+  </body>
+</html>
