@@ -1,0 +1,22 @@
+---
+title: 'Debugging n8n binary data issues: a war story'
+description: 'How a random "binary data not found" error in a self-hosted n8n queue setup took two days to track down to worker containers not sharing storage.'
+pubDate: '2026-07-05'
+---
+A client's workflow was failing about 1 in 20 runs with an error that made no sense: `The binary data file could not be found`. Everything else looked fine. Same webhook payload, same image, same S3 credentials. It just... sometimes didn't work. If you've run n8n self-hosted for more than a few months you already know where this is going, but I didn't, and it cost me a Saturday.
+
+The setup: a DigitalOcean droplet running n8n in queue mode via Docker Compose. One main container, three worker containers, Redis for the queue, Postgres for the database. The workflow itself was simple. A webhook receives an image upload, an Edit Image node resizes it, then it gets pushed to S3 and a Slack message goes out with the image attached. Nothing exotic.
+
+First thing I did was check the obvious stuff. Payload size, timeouts, whether the webhook was double-firing. I added a NoOp node right after the webhook just to log the execution ID and item count. Nothing weird. The item count was always 1. So it wasn't duplicate triggers.
+
+Then I started staring at the n8n execution logs directly instead of the UI, using `docker logs n8n-worker-1 --tail 200 -f` across all three worker containers at once in separate terminal tabs. That's when I noticed the pattern: the failing executions were always picked up by a different worker than the one that had run the Edit Image node earlier in the chain. Worker 2 would resize the image and write the binary data somewhere. Worker 3 would pick up the next queued job for that same execution and go looking for that file. It wasn't there. Hence "not found."
+
+That's when it clicked. By default, n8n's binary data mode is filesystem-based, and it writes to a local path inside the container, `/home/node/.n8n/binaryData/` by default. In queue mode, each worker is its own container with its own filesystem. There's no shared volume unless you explicitly set one up. So worker 2 writes a file to its own disk, tells the job queue "done, binary data is at this reference," and worker 3 has literally no way to see that file because it lives in a completely separate container.
+
+The annoying part is that it doesn't fail every time, because n8n doesn't strictly guarantee which worker picks up which downstream node execution, and sometimes the same worker handles the whole chain by luck. That's exactly why it looked like a flaky, load-dependent bug instead of a straightforward config problem. Twenty runs, one or two land on a different worker for the second half, and you get the "1 in 20" pattern I was chasing.
+
+The fix was to stop using filesystem mode entirely for a multi-worker setup and point binary data storage at S3, since we already had an S3 bucket in play anyway. In the Compose file, that meant setting `N8N_DEFAULT_BINARY_DATA_MODE=s3` along with the corresponding `N8N_EXTERNAL_STORAGE_S3_*` variables for bucket, region, and credentials. After restarting all four containers, the same batch of test uploads that used to fail one out of twenty times ran clean fifty times in a row.
+
+If you don't want to depend on S3, the other real option is a shared filesystem volume mounted at the same path across every worker and the main container, using NFS or a similar network volume, so every container is actually looking at the same disk. I didn't go that route here because the client already had S3 wired up for other things, and one less moving part is one less moving part.
+
+The lesson that actually matters isn't about n8n specifically. It's that anything running in queue mode with multiple stateless workers has to treat local disk as if it doesn't exist between steps. If a node writes a file and the next node might run somewhere else, local filesystem storage is a bug waiting for enough traffic to expose it. n8n's docs mention this if you go looking, in the binary data section under scaling, but nothing points you there when you're just trying to get a workflow live and everything seems to work in testing.
