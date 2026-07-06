@@ -1,87 +1,45 @@
 ---
 title: 'How I built a fully automated blog workflow with n8n and Gemini'
-description: 'I got tired of copy-pasting outlines. Here is how I chained n8n, local markdown files, and Gemini to automate my draft generation.'
-pubDate: '2026-07-05'
+description: 'A look behind the scenes of my self-hosted n8n setup that pulls ideas from Todoist, drafts posts using Gemini, and commits them directly to GitHub.'
+pubDate: '2026-07-06'
 ---
-I write a lot of markdown files. Up until last week, my process for draft generation was a mess of open tabs. I would write a rough outline in VS Code, copy it, paste it into a browser tab running Google AI Studio, coax Gemini 1.5 Pro into expanding my bullet points, copy the response, paste it back into my editor, and then spend twenty minutes cleaning up weird formatting choices. 
+I write a lot of code, but writing blog posts consistently is hard. A few weeks ago, I decided to automate the boring parts of my writing process. I did not want an AI to write my entire blog without my input. That results in dry, generic garbage. Instead, I wanted an automated partner that takes my messy, half-baked technical notes and turns them into structured Markdown drafts that I can edit and publish with one click.
 
-It was tedious. I wanted a way to just commit a raw markdown outline to a specific folder in my local git repo and have a polished draft appear in my drafts folder five minutes later. 
+Here is how I built a hands-off pipeline using a self-hosted n8n instance, Todoist, the Gemini API, and GitHub.
 
-I built exactly that using n8n and the Gemini API. Here is the exact setup, the hiccups I ran into, and how you can replicate it.
+### The architecture of the pipeline
 
-### The architecture of a lazy writer
+The whole system runs on a Docker-compose setup on my tiny VPS here in Kathmandu. The workflow has four main stages.
 
-The whole system runs on self-hosted n8n running in a Docker container on my home server. I don't use cloud triggers because I like keeping my local files local until they are ready for GitHub. 
+First, the trigger. I use Todoist to manage my life. When I get an idea for a post, I create a task in a specific "Blog Ideas" project. I write a quick title and dump my messy thoughts, code snippets, or console logs into the task description. n8n polls Todoist every hour looking for new tasks in this project that have a specific label like `#ready-to-draft`.
 
-Instead, I use a local directory watcher. The workflow triggers whenever a new file lands in `/Users/nayan/code/blog/raw_ideas/` with a `.md` extension.
+Second, the data extraction. Once n8n finds a task, it pulls the title and the raw description. It also fetches any comments I might have added to that task, which usually contain extra terminal outputs or links to GitHub issues I found helpful.
 
-Here is how the data flows once n8n picks up the file:
-1. Read the raw markdown outline.
-2. Clean up any weird system metadata (like hidden DS_Store files that macOS loves to create).
-3. Send the raw outline to Gemini 1.5 Pro with a highly specific system prompt.
-4. Receive the generated draft.
-5. Write the draft to `/Users/nayan/code/blog/drafts/` with the original filename intact.
-6. Move the raw outline file to an archive folder so it doesn't trigger the workflow again.
+Third, the prompt engineering. This is where most of my time went. I pass this raw dump to the Gemini 1.5 Pro model via the Google Gemini node in n8n. I do not use a simple "write a blog post about this" prompt. My system prompt is highly specific. It instructs the model to use my personal tone, maintain a direct developer-to-developer style, and format the output as valid Markdown with specific frontmatter. I also explicitly forbid the AI from using generic corporate buzzwords. 
 
-### Keeping the AI on a leash
+Fourth, the commit. The output from Gemini goes straight to a GitHub helper node. It creates a new branch in my website repository and commits a new `.md` file inside my `src/content/blog/` directory. The file name is automatically generated from the slugified task title. Finally, n8n leaves a comment on the original Todoist task with a link to the GitHub branch and marks the task as complete.
 
-The hardest part of this setup wasn't the n8n logic. It was stopping the LLM from writing corporate garbage. If you let an LLM write a blog post with default settings, it will choke the text with words like 'vibrant' and 'seamless'. To combat this, I had to get aggressive with the system instructions in my n8n Gemini node.
+### Handling the API costs and rate limits
 
-I set the temperature to 0.7. If you go too low (like 0.2), the output sounds like a dry manual. If you go too high (above 1.0), it hallucinates fake npm packages.
+I chose Gemini 1.5 Pro because the free tier limits are quite generous for a personal blog. I do not post ten times a day, so I stay well within the requests-per-minute boundary. If you try to run this with OpenAI, you will need to load a pre-paid balance, which is fine, but Gemini is incredibly easy to set up with a simple API key from Google AI Studio.
 
-This is the exact system instruction block I ended up using in n8n:
+One issue I ran into early on was JSON parsing errors. Sometimes the LLM would output the Markdown with triple backticks wrapping the frontmatter, which broke my Hugo build process. I fixed this by using an n8n Code node running a short JavaScript regex. It strips away any accidental markdown code blocks that the LLM wraps around the actual code output before committing to GitHub.
 
-```text
-You are a technical writer who values brevity. 
-Do not use passive voice. 
-Do not start sentences with 'In today's digital age' or similar filler. 
-Do not use bulleted lists where a simple paragraph works better. 
-Write in the first person. 
-Use contractions. 
-Keep the technical details exact.
-```
-
-I also had to explicitly tell it to output raw markdown without wrapping the entire response in triple backticks. If you don't do this, your output file ends up starting with a literal ```markdown tag, which breaks my Hugo parser.
-
-### Setting up the n8n directory watcher
-
-To make this work locally, you need to mount your local blog directory to your n8n Docker container. If you run n8n on Docker, it can't see your host system files by default. 
-
-My docker-compose volume mounts look like this:
-
-```yaml
-volumes:
-  - /Users/nayan/code/blog:/data/blog
-```
-
-In n8n, inside the 'Local File Trigger' node, I set the path to `/data/blog/raw_ideas/` and set the event to 'File Created'. 
-
-Next, I added a 'Read Binary File' node. The trigger node only tells n8n that a file exists. You need this second node to actually load the file content into memory. I set the file path in this node dynamically using an expression: `{{ $json.path }}`.
-
-### Parsing the content and calling the API
-
-Once the file is read, n8n treats it as binary data. I used a 'Code' node running basic JavaScript to convert that binary buffer into a UTF-8 string that the Gemini node can read. 
+Here is the regex I used in the Code node to clean up the output:
 
 ```javascript
-const binaryData = items[0].binary.data;
-const decodedText = Buffer.from(binaryData.data, 'base64').toString('utf-8');
-return [{ json: { text: decodedText } }];
+let content = $input.item.json.text;
+// Remove leading markdown code blocks if the model wrapped the response
+content = content.replace(/^```markdown\s*/i, '');
+content = content.replace(/^```html\s*/i, '');
+content = content.replace(/\s*```$/, '');
+return { cleanContent: content };
 ```
 
-This text then goes straight into the Gemini node. I use the 'Generate Content' action with the `gemini-1.5-pro` model. It handles long contexts much better than the flash model, which is useful when my outlines contain long code snippets I want to preserve.
+### The final editorial human check
 
-### Writing the output back
+This setup does not publish directly to production. That would be risky. Instead, the commit lands on a separate branch. My site is hosted on Vercel, which automatically generates a preview deployment for every new branch. 
 
-The final step uses the 'Write Binary File' node. I set the target path to `/data/blog/drafts/{{ $node["Local File Trigger"].json.name }}`. This ensures the output file keeps the exact name of my input outline.
+When n8n finishes the workflow, I get a push notification on my phone from the GitHub app. I can click the preview link, read the draft on my phone while drinking tea, and see how it looks. If I like it, I merge the pull request on GitHub, and the site rebuilds. If it needs tweaks, I open the file in my browser on GitHub, edit the text directly, and merge it.
 
-Lastly, I use an 'Execute Command' node to run a simple shell command that moves the original file out of the `raw_ideas` directory: 
-
-`mv "/data/blog/raw_ideas/{{ $node["Local File Trigger"].json.name }}" "/data/blog/archive/"`
-
-Without this final step, the file trigger might loop or keep processing the same file if n8n restarts.
-
-### The result
-
-Now, when I get an idea, I open my terminal, type `touch raw_ideas/css-grid-tricks.md`, and quickly scribble down three bullet points and a code snippet. I save the file. 
-
-By the time I make a cup of tea, a clean, 600-word draft is waiting for me in my editor. It still needs my personal touch, a few edits, and some formatting tweaks, but the blank-page anxiety is completely gone.
+This system keeps me in control while removing the friction of creating the initial file, writing the frontmatter metadata, and setting up the structure. I just dump my raw thoughts into my todo list, and a few minutes later, I have a real draft waiting for me.
